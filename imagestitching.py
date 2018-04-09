@@ -234,7 +234,6 @@ def up_to_step_3(imgs):
                 # cv2.waitKey()
                 print(homography_matrix)
                 print(M)
-                print('###')
 
                 # use the h_matrix to create a warped image, with the remap function like process
                 # A'=H*A, get the size of newly create image, use A=A'*invH to get the
@@ -252,43 +251,72 @@ def up_to_step_3(imgs):
                         original_coordinates[1].append(y)
                         original_coordinates[2].append(1)
                 original_coordinates = np.matrix(np.array(original_coordinates))
-                
                 transformed_coordinates = homography_matrix.dot(original_coordinates)                
                 for x in range(0,len(transformed_coordinates[0])):
                     transformed_coordinates[0][x] /= transformed_coordinates[2][x]
                     transformed_coordinates[1][x] /= transformed_coordinates[2][x]
 
-                # print(original_coordinates)
-                # print(transformed_coordinates)
-                new_image_width_low = int(np.ceil(min(transformed_coordinates[0])))
-                new_image_width_high = int(np.floor(max(transformed_coordinates[0])))
-                new_image_height_low = int(np.ceil(min(transformed_coordinates[1])))
-                new_image_height_high = int(np.floor(max(transformed_coordinates[1])))
+                new_image_width_low = int(np.ceil(np.min(transformed_coordinates[0])))
+                new_image_width_high = int(np.floor(np.max(transformed_coordinates[0])))
+                new_image_height_low = int(np.ceil(np.min(transformed_coordinates[1])))
+                new_image_height_high = int(np.floor(np.max(transformed_coordinates[1])))
 
+                print(transformed_coordinates)
+
+                # inverse homography_matrix 
                 homography_matrix = np.linalg.inv(homography_matrix)
+                homography_matrix = (1/homography_matrix.item(8)) * homography_matrix
                 # output new image
                 print(new_image_width_low, new_image_width_high, new_image_height_low, new_image_height_high)
                 output_image = np.zeros((new_image_width_high - new_image_width_low,\
                     new_image_height_high - new_image_height_low, 3))
+
+                original_coordinates = [[],[],[]]
                 for x in range(new_image_width_low, new_image_width_high):
                     for y in range(new_image_height_low, new_image_height_high):
-                        p1 = np.matrix([x, y, 1])
-                        transformed_coordinate = np.dot(homography_matrix, p1.T)
-                        transformed_coordinate = (1/transformed_coordinate.item(2))*transformed_coordinate
-                        temp_x,temp_y = transformed_coordinate.item(0),transformed_coordinate.item(1)
-                
-                        temp_x = int(np.floor(temp_x))
-                        temp_y = int(np.floor(temp_y))
-                        color = None
-                        if temp_x < 0 or temp_x >= width1 or temp_y < 0 or temp_y >= height1:
-                            color = [0,0,0]
-                        else:
-                            color = imgs[i][temp_x][temp_y]
+                        original_coordinates[0].append(x)                   
+                        original_coordinates[1].append(y)
+                        original_coordinates[2].append(1)
+                transformed_coordinates = homography_matrix.dot(original_coordinates)                
+                for x in range(0,len(transformed_coordinates[0])):
+                    transformed_coordinates[0][x] /= transformed_coordinates[2][x]
+                    transformed_coordinates[1][x] /= transformed_coordinates[2][x]
 
+                for index in range(0, len(transformed_coordinates[0])):
+                    temp_x = int(np.floor(transformed_coordinates[0].item(index)))
+                    temp_y = int(np.floor(transformed_coordinates[1].item(index)))
+                    color = None
+                    if temp_x < 0 or temp_x >= width1 or temp_y < 0 or temp_y >= height1:
+                        color = [0,0,0]
+                    else:
                         if flag == 1:
-                            output_image[x-new_image_width_low][y-new_image_height_low] =  color
+                            color = imgs[i][temp_x][temp_y]
                         else:
-                            output_image[x-new_image_width_low][y-new_image_height_low] = color
+                            color = imgs[j][temp_x][temp_y]
+
+                    output_image[x-new_image_width_low][y-new_image_height_low] = color
+
+
+
+                # for x in range(new_image_width_low, new_image_width_high):
+                #     for y in range(new_image_height_low, new_image_height_high):
+                #         p1 = np.matrix([x, y, 1])
+                #         transformed_coordinate = np.dot(homography_matrix, p1.T)
+                #         transformed_coordinate = (1/transformed_coordinate.item(2))*transformed_coordinate
+                #         temp_x,temp_y = transformed_coordinate.item(0),transformed_coordinate.item(1)
+                
+                #         temp_x = int(np.floor(temp_x))
+                #         temp_y = int(np.floor(temp_y))
+                #         color = None
+                #         if temp_x < 0 or temp_x >= width1 or temp_y < 0 or temp_y >= height1:
+                #             color = [0,0,0]
+                #         else:
+                #             if flag == 1:
+                #                 color = imgs[i][temp_x][temp_y]
+                #             else:
+                #                 color = imgs[j][temp_x][temp_y]
+
+                #         output_image[x-new_image_width_low][y-new_image_height_low] = color
 
                 if flag == 1:
                     output_imgs["warped_img_%d(img_%d_reference).jpg"%(i,j)] = output_image
