@@ -4,6 +4,7 @@ import argparse
 import os
 import numpy as np
 import random
+# from sets import Set
 
 def up_to_step_1(imgs):
     """Complete pipeline up to step 3: Detecting features and descriptors"""
@@ -36,7 +37,7 @@ def save_step_1(imgs, output_path='./output/step1'):
 
 def up_to_step_2(imgs):
     """Complete pipeline up to step 2: Calculate matching feature points"""
-    detector = cv2.xfeatures2d.SIFT_create(nfeatures=300,nOctaveLayers=3,\
+    detector = cv2.xfeatures2d.SIFT_create(nfeatures=0,nOctaveLayers=3,\
         contrastThreshold=0.04,edgeThreshold=10, sigma=1.6)
 
     GOOD_MATCH_DISTANCE = 100
@@ -60,9 +61,17 @@ def up_to_step_2(imgs):
                     cv2.DMatch(x, indexes[1], distances[x][indexes[1]])))
 
             good = []
+            y_taken = dict()
             for m,n in nearest_matches:
-                if m.distance < 0.75*n.distance and m.distance<GOOD_MATCH_DISTANCE:
-                    good.append(m)
+                if m.distance < 0.7*n.distance and m.distance<GOOD_MATCH_DISTANCE:
+                    if (kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1]) in y_taken:
+                        if y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])].distance > m.distance:
+                            good.remove(y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])])
+                            good.append(m)
+                            y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])] = m
+                    else:
+                        good.append(m)
+                        y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])] = m
 
             # filter good match pics
             if len(good) > GOOD_MATCH_POINTS_AMOUNT:
@@ -92,8 +101,10 @@ def calculate_h_squared_distance(coordinates_list, h):
     estimated_p2 = (1/estimated_p2.item(2))*estimated_p2
 
     p2 = np.transpose(np.matrix([coordinates_list[2], coordinates_list[3], 1]))
-    error = np.sqrt((estimated_p2[0]-p2[0])**2 + (estimated_p2[1]-p2[1])**2)
-    return error
+    # error = np.sqrt((estimated_p2[0]-p2[0])**2 + (estimated_p2[1]-p2[1])**2)
+    # return error
+    error = p2 - estimated_p2
+    return np.linalg.norm(error)
 
 def calculate_homography(correspondences):
     #loop through correspondences and create assemble matrix
@@ -121,16 +132,32 @@ def calculate_homography(correspondences):
     h = (1/h.item(8)) * h
     return h
 
+def calculate_homography2(correspondences):
+    A = []
+    for corr in correspondences:
+        p1 = np.matrix([corr.item(0), corr.item(1), 1])
+        p2 = np.matrix([corr.item(2), corr.item(3), 1])
+        x, y = p1.item(0), p1.item(1)
+        u, v = p2.item(0), p2.item(1)
+        A.append([x, y, 1, 0, 0, 0, -u*x, -u*y, -u])
+        A.append([0, 0, 0, x, y, 1, -v*x, -v*y, -v])
+    A = np.asarray(A)
+    U, S, Vh = np.linalg.svd(A)
+    L = Vh[-1,:] / Vh[-1,-1]
+    H = L.reshape(3, 3)
+    return H
+
+
 def ransac_homography_matrix(corrs):
     h_matrix = None
     max_inliners_amount = -1
-    LOOPS_TO_RUN = 1000
-    INLIER_THRESHOLD = 5
+    LOOPS_TO_RUN = 3000
+    INLIER_THRESHOLD = 7
 
     for i in range(0, LOOPS_TO_RUN):
         randomFour = []
         for i in range(0, 4):
-            randomFour.append(list(corrs[random.randint(0, len(corrs))]))
+            randomFour.append(list(corrs[random.randint(0, len(corrs)-1)]))
         randomFour = np.array(randomFour)
 
         # calculate homography
@@ -143,22 +170,17 @@ def ransac_homography_matrix(corrs):
 
         if inliers_amount > max_inliners_amount:
             max_inliners_amount = inliers_amount
-            h_matrix = h
-
+            h_matrix = h             
     return h_matrix
 
 def up_to_step_3(imgs):
     """Complete pipeline up to step 3: estimating homographies and warpings"""
-    detector = cv2.xfeatures2d.SIFT_create(nfeatures=300,nOctaveLayers=3,\
+    detector = cv2.xfeatures2d.SIFT_create(nfeatures=0,nOctaveLayers=3,\
         contrastThreshold=0.04,edgeThreshold=10, sigma=1.6)
 
     GOOD_MATCH_DISTANCE = 100
     GOOD_MATCH_POINTS_AMOUNT = 20
-
-    good_matches = []
-    matched_img_name_list = []
-    matched_descriptors = []
-    matched_key_points = []
+    output_imgs = {}
 
     for i in range(0,len(imgs)-1):
         for j in range(i+1,len(imgs)):
@@ -175,39 +197,116 @@ def up_to_step_3(imgs):
                     cv2.DMatch(x, indexes[1], distances[x][indexes[1]])))
 
             good = []
+            y_taken = dict()
             for m,n in nearest_matches:
-                if m.distance < 0.75*n.distance and m.distance<GOOD_MATCH_DISTANCE:
-                    good.append(m)
+                if m.distance < 0.7*n.distance and m.distance<GOOD_MATCH_DISTANCE:
+                    if (kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1]) in y_taken:
+                        if y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])].distance > m.distance:
+                            good.remove(y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])])
+                            good.append(m)
+                            y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])] = m
+                    else:
+                        good.append(m)
+                        y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])] = m
 
             # filter good match pics
-            if len(good) > GOOD_MATCH_POINTS_AMOUNT:
-                good_matches.append(good)
-                matched_img_name_list.append((i,j))
-                matched_descriptors.append((des1, des2))
-                matched_key_points.append((kp1, kp2))
+            if len(good) < GOOD_MATCH_POINTS_AMOUNT:
+                continue
     
-    output_imgs = []
-    for i in range(0, len(good_matches)):
-        correspondence_list = []
-        for match in good_matches[i]:
-            (x1, y1) = matched_key_points[i][0][match.queryIdx].pt
-            (x2, y2) = matched_key_points[i][1][match.trainIdx].pt
-            correspondence_list.append([x1, y1, x2, y2])
-        corrs = np.matrix(correspondence_list)
-        # calcuate h_matrix
-        homography_matrix = ransac_homography_matrix(corrs)
-        # use the h_matrix to create a warped image, with the remap function
-        # A'=H*A, get the size of newly create image, use A=A'*H to get the
-        # corresponding pixel value in original image
-        print(homography_matrix)
+            for flag in range(1, 3):
+                correspondence_list = []
+                for match in good:
+                    (x1, y1) = kp1[match.queryIdx].pt
+                    (x2, y2) = kp2[match.trainIdx].pt
+                    if flag == 1:
+                        correspondence_list.append([x1, y1, x2, y2])
+                    else:
+                        correspondence_list.append([x2, y2, x1, y1])
+                # calcuate h_matrix
+                homography_matrix = ransac_homography_matrix(np.matrix(correspondence_list))
 
+                src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
+                dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
+                M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
+                # dst = np.zeros((1212,1366))
+                # im_out = cv2.warpPerspective(imgs[i], 0, M, [1212, 1366])
+                # cv2.imshow('123',im_out)
+                # cv2.waitKey()
+                print(homography_matrix)
+                print(M)
+                print('###')
 
+                # use the h_matrix to create a warped image, with the remap function like process
+                # A'=H*A, get the size of newly create image, use A=A'*invH to get the
+                # corresponding pixel value in original image
+                width1, height1 = None, None
+                if flag == 1:
+                    width1, height1 = gray1.shape
+                else:
+                    width1, height1 = gray2.shape
+
+                original_coordinates = [[],[],[]]
+                for x in range(0,width1):
+                    for y in range(0,height1): 
+                        original_coordinates[0].append(x)                   
+                        original_coordinates[1].append(y)
+                        original_coordinates[2].append(1)
+                original_coordinates = np.matrix(np.array(original_coordinates))
+                
+                transformed_coordinates = homography_matrix.dot(original_coordinates)                
+                for x in range(0,len(transformed_coordinates[0])):
+                    transformed_coordinates[0][x] /= transformed_coordinates[2][x]
+                    transformed_coordinates[1][x] /= transformed_coordinates[2][x]
+
+                # print(original_coordinates)
+                # print(transformed_coordinates)
+                new_image_width_low = int(np.ceil(min(transformed_coordinates[0])))
+                new_image_width_high = int(np.floor(max(transformed_coordinates[0])))
+                new_image_height_low = int(np.ceil(min(transformed_coordinates[1])))
+                new_image_height_high = int(np.floor(max(transformed_coordinates[1])))
+
+                homography_matrix = np.linalg.inv(homography_matrix)
+                # output new image
+                print(new_image_width_low, new_image_width_high, new_image_height_low, new_image_height_high)
+                output_image = np.zeros((new_image_width_high - new_image_width_low,\
+                    new_image_height_high - new_image_height_low, 3))
+                for x in range(new_image_width_low, new_image_width_high):
+                    for y in range(new_image_height_low, new_image_height_high):
+                        p1 = np.matrix([x, y, 1])
+                        transformed_coordinate = np.dot(homography_matrix, p1.T)
+                        transformed_coordinate = (1/transformed_coordinate.item(2))*transformed_coordinate
+                        temp_x,temp_y = transformed_coordinate.item(0),transformed_coordinate.item(1)
+                
+                        temp_x = int(np.floor(temp_x))
+                        temp_y = int(np.floor(temp_y))
+                        color = None
+                        if temp_x < 0 or temp_x >= width1 or temp_y < 0 or temp_y >= height1:
+                            color = [0,0,0]
+                        else:
+                            color = imgs[i][temp_x][temp_y]
+
+                        if flag == 1:
+                            output_image[x-new_image_width_low][y-new_image_height_low] =  color
+                        else:
+                            output_image[x-new_image_width_low][y-new_image_height_low] = color
+
+                if flag == 1:
+                    output_imgs["warped_img_%d(img_%d_reference).jpg"%(i,j)] = output_image
+                else:
+                    output_imgs["warped_img_%d(img_%d_reference).jpg"%(j,i)] = output_image
+    return output_imgs
 
 
 def save_step_3(img_pairs, output_path="./output/step3"):
     """Save the intermediate result from Step 3"""
-    # ... your code here ...
-    pass
+    if not os.path.exists(output_path):
+        os.makedirs(output_path)
+
+    if output_path[:-1]!='/':
+        output_path += '/'
+
+    for key, value in img_pairs.iteritems():
+        cv2.imwrite("%s%s"%(output_path,key), value)
 
 
 def up_to_step_4(imgs):
@@ -267,4 +366,4 @@ if __name__ == "__main__":
     elif args.step == 4:
         print("Running step 4")
         panoramic_img = up_to_step_4(imgs)
-        save_step_4(img_pairs, args.output)
+        save_step_4(panoramic_img, args.output)
