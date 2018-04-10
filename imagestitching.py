@@ -225,15 +225,11 @@ def up_to_step_3(imgs):
                 # calcuate h_matrix
                 homography_matrix = ransac_homography_matrix(np.matrix(correspondence_list))
 
-                src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
-                dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
-                M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
-                # dst = np.zeros((1212,1366))
-                # im_out = cv2.warpPerspective(imgs[i], dst, M, [1212, 1366])
-                # cv2.imshow('123',im_out)
-                # cv2.waitKey()
-                print(homography_matrix)
-                print(M)
+                # src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
+                # dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
+                # M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
+                # print(homography_matrix)
+                # print(M)
 
                 # use the h_matrix to create a warped image, with the remap function like process
                 # A'=H*A, get the size of newly create image, use A=A'*invH to get the
@@ -246,32 +242,15 @@ def up_to_step_3(imgs):
                     width1, height1 = gray2.shape
                     width2, height2 = gray1.shape
 
-                original_coordinates = [[],[],[]]
-                for x in range(0,width1):
-                    for y in range(0,height1): 
-                        original_coordinates[0].append(x)                   
-                        original_coordinates[1].append(y)
-                        original_coordinates[2].append(1)
-                original_coordinates = np.matrix(np.array(original_coordinates))
-                print('original_coordinates: ',original_coordinates)
-                transformed_coordinates = homography_matrix.dot(original_coordinates)                
+                indY, indX = np.indices((width1,height1))  # similar to meshgrid/mgrid
+                lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
+                trans_lin_homg_pts = homography_matrix.dot(lin_homg_pts)
+                trans_lin_homg_pts /= trans_lin_homg_pts[2,:]
 
-                transformed_coordinates = np.array(transformed_coordinates)
-                transformed_coordinates /= transformed_coordinates[2]
-
-                new_image_width_low = int(np.ceil(np.min(transformed_coordinates[0])))
-                new_image_width_high = int(np.floor(np.max(transformed_coordinates[0])))
-                new_image_height_low = int(np.ceil(np.min(transformed_coordinates[1])))
-                new_image_height_high = int(np.floor(np.max(transformed_coordinates[1])))
-
-                # if new_image_height_high - new_image_height_low > 1000:
-                #     temp1 = (new_image_height_high + new_image_height_low)/2
-                #     new_image_height_low = temp1 - 1000
-                #     new_image_height_high = temp1 + 1000
-                # if new_image_width_high - new_image_width_low > 1000:
-                #     temp1 = (new_image_width_high + new_image_width_low)/2
-                #     new_image_width_low = temp1 - 1000
-                #     new_image_width_high = temp1 + 1000
+                new_image_width_low = int(np.min(trans_lin_homg_pts[0,:]))
+                new_image_height_low = int(np.min(trans_lin_homg_pts[1,:]))
+                new_image_width_high = int(np.max(trans_lin_homg_pts[0,:]))
+                new_image_height_high = int(np.max(trans_lin_homg_pts[1,:]))
 
                 # inverse homography_matrix 
                 homography_matrix = np.linalg.inv(homography_matrix)
