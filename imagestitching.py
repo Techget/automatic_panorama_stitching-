@@ -174,6 +174,33 @@ def ransac_homography_matrix(corrs):
 
     return h_matrix
 
+def custom_warpPerspective(img, gray, H, width, height):
+    # inverse H
+    # H = np.linalg.inv(H)
+    # H = (1/H.item(8)) * H
+    # find corresponding points in original img
+    indY, indX = np.indices((width,height))  # similar to meshgrid/mgrid
+    lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
+    trans_lin_homg_pts = H.dot(lin_homg_pts)
+    trans_lin_homg_pts /= trans_lin_homg_pts[2,:]
+    trans_lin_homg_pts = np.array(trans_lin_homg_pts)
+
+    original_width, original_height = gray.shape
+
+    output_img = np.zeros((width, height, 3))
+    for i in range(0, width):
+        for j in range(0, height):
+            temp_x = int(trans_lin_homg_pts[0].item(i))
+            temp_y = int(trans_lin_homg_pts[1].item(j))
+
+            if temp_x >=0 and temp_x<original_width and temp_y>=0 and temp_y <original_height:
+                output_img[i][j] = img[i][j]
+            else:
+                output_img[i][j] = [0,0,0]
+
+    return output_img
+
+
 def up_to_step_3(imgs):
     """Complete pipeline up to step 3: estimating homographies and warpings"""
     detector = cv2.xfeatures2d.SIFT_create(nfeatures=0,nOctaveLayers=3,\
@@ -214,23 +241,25 @@ def up_to_step_3(imgs):
             if len(good) < GOOD_MATCH_POINTS_AMOUNT:
                 continue
     
-            for flag in range(1, 3):
+            for flag in range(1, 2): #3
                 correspondence_list = []
                 for match in good:
                     (x1, y1) = kp1[match.queryIdx].pt
                     (x2, y2) = kp2[match.trainIdx].pt
                     if flag == 1:
-                        correspondence_list.append([x1, y1, x2, y2])
-                    else:
                         correspondence_list.append([x2, y2, x1, y1])
+                    else:
+                        correspondence_list.append([x1, y1, x2, y2])
                 # calcuate h_matrix
                 homography_matrix = ransac_homography_matrix(np.matrix(correspondence_list))
 
-                # src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
-                # dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
-                # M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
-                # print(homography_matrix)
-                # print(M)
+                src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
+                dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
+                M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
+                print(homography_matrix)
+                print(M)
+
+                
                 
                 width1, height1, width2, height2 = None, None, None, None
                 if flag == 1:
@@ -240,21 +269,28 @@ def up_to_step_3(imgs):
                     width1, height1 = gray2.shape
                     width2, height2 = gray1.shape
 
-                indY, indX = np.indices((width1,height1))  # similar to meshgrid/mgrid
-                lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
+                if flag == 1:
+                    imgReg = custom_warpPerspective(imgs[i], gray1, homography_matrix, width2, height2)
+                else:
+                    imgReg = custom_warpPerspective(imgs[j], gray2, homography_matrix, width2, height2)
+
+                cv2.imwrite('testq3.jpg', imgReg)
+
+                # indY, indX = np.indices((width1,height1))  # similar to meshgrid/mgrid
+                # lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
                 # trans_lin_homg_pts = homography_matrix.dot(lin_homg_pts)
                 # trans_lin_homg_pts /= trans_lin_homg_pts[2,:]
-                map_ind = homography_matrix.dot(lin_homg_pts)
-                map_x, map_y = map_ind[:-1]/map_ind[-1]  # ensure homogeneity
-                map_x = map_x.reshape(width1, height1).astype(np.float32)
-                map_y = map_y.reshape(width1, height1).astype(np.float32)
+                # map_ind = homography_matrix.dot(lin_homg_pts)
+                # map_x, map_y = map_ind[:-1]/map_ind[-1]  # ensure homogeneity
+                # map_x = map_x.reshape(width1, height1).astype(np.float32)
+                # map_y = map_y.reshape(width1, height1).astype(np.float32)
 
-                if flag == 1:
-                    dst = cv2.remap(imgs[j], map_x, map_y, cv2.INTER_LINEAR)
-                    output_imgs["warped_img_%d(img_%d_reference).jpg"%(i,j)] = dst
-                else:
-                    dst = cv2.remap(imgs[j], map_x, map_y, cv2.INTER_LINEAR)
-                    output_imgs["warped_img_%d(img_%d_reference).jpg"%(j,i)] = dst                  
+                # if flag == 1:
+                #     dst = cv2.remap(imgs[j], map_x, map_y, cv2.INTER_LINEAR)
+                #     output_imgs["warped_img_%d(img_%d_reference).jpg"%(i,j)] = dst
+                # else:
+                #     dst = cv2.remap(imgs[j], map_x, map_y, cv2.INTER_LINEAR)
+                #     output_imgs["warped_img_%d(img_%d_reference).jpg"%(j,i)] = dst                  
 
     return output_imgs
 
