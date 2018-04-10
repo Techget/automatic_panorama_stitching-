@@ -174,18 +174,17 @@ def ransac_homography_matrix(corrs):
 
     return h_matrix
 
-def custom_warpPerspective(img, gray, H, width, height):
+def custom_warpPerspective(img, H, width, height):
     # inverse H
-    # H = np.linalg.inv(H)
-    # H = (1/H.item(8)) * H
+    H = np.linalg.inv(H)
+    H = (1/H.item(8)) * H
     # find corresponding points in original img
+    original_width, original_height = img.shape[:2]
     indY, indX = np.indices((width,height))  # similar to meshgrid/mgrid
     lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
     trans_lin_homg_pts = H.dot(lin_homg_pts)
     trans_lin_homg_pts /= trans_lin_homg_pts[2,:]
     trans_lin_homg_pts = np.array(trans_lin_homg_pts)
-
-    original_width, original_height = gray.shape
 
     output_img = np.zeros((width, height, 3))
     for i in range(0, width):
@@ -247,9 +246,9 @@ def up_to_step_3(imgs):
                     (x1, y1) = kp1[match.queryIdx].pt
                     (x2, y2) = kp2[match.trainIdx].pt
                     if flag == 1:
-                        correspondence_list.append([x2, y2, x1, y1])
-                    else:
                         correspondence_list.append([x1, y1, x2, y2])
+                    else:
+                        correspondence_list.append([x2, y2, x1, y1])
                 # calcuate h_matrix
                 homography_matrix = ransac_homography_matrix(np.matrix(correspondence_list))
 
@@ -258,9 +257,7 @@ def up_to_step_3(imgs):
                 M, mask = cv2.findHomography(src_pts, dst_pts, cv2.RANSAC,5.0)
                 print(homography_matrix)
                 print(M)
-
-                
-                
+ 
                 width1, height1, width2, height2 = None, None, None, None
                 if flag == 1:
                     width1, height1 = gray1.shape
@@ -269,12 +266,53 @@ def up_to_step_3(imgs):
                     width1, height1 = gray2.shape
                     width2, height2 = gray1.shape
 
-                if flag == 1:
-                    imgReg = custom_warpPerspective(imgs[i], gray1, homography_matrix, width2, height2)
-                else:
-                    imgReg = custom_warpPerspective(imgs[j], gray2, homography_matrix, width2, height2)
+                original_width, original_height = img.shape[:2]
+                indY, indX = np.indices((width1,height1))  # similar to meshgrid/mgrid
+                lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
+                trans_lin_homg_pts = homography_matrix.dot(lin_homg_pts)
+                trans_lin_homg_pts /= trans_lin_homg_pts[2,:]
+                new_image_width_low = int(np.min(trans_lin_homg_pts[0,:]))
+                new_image_height_low = int(np.min(trans_lin_homg_pts[1,:]))
+                new_image_width_high = int(np.max(trans_lin_homg_pts[0,:]))
+                new_image_height_high = int(np.max(trans_lin_homg_pts[1,:]))
 
-                cv2.imwrite('testq3.jpg', imgReg)
+
+                homography_matrix = np.linalg.inv(homography_matrix)
+                # homography_matrix = (1/homography_matrix.item(8)) * homography_matrix
+
+                print(new_image_width_low, new_image_width_high, new_image_height_low, new_image_height_high)
+                output_image = np.zeros((new_image_width_high - new_image_width_low,\
+                    new_image_height_high - new_image_height_low, 3))
+
+                for x in range(new_image_width_low, new_image_width_high):
+                    for y in range(new_image_height_low, new_image_height_high):
+                        p1 = np.matrix([x, y, 1])
+                        transformed_coordinate = np.dot(homography_matrix, p1.T)
+                        transformed_coordinate = (1/transformed_coordinate.item(2))*transformed_coordinate
+                        temp_x,temp_y = int(transformed_coordinate.item(0)),int(transformed_coordinate.item(1))
+                        # index = (x-new_image_width_low)*(new_image_height_high-new_image_height_low)+(y-new_image_height_low)
+                        # temp_x = int(transformed_coordinates[0].item(index))
+                        # temp_y = int(transformed_coordinates[0].item(index))
+
+                        color = None
+                        if temp_x < 0 or temp_x >= width1 or temp_y < 0 or temp_y >= height1:
+                            color = [0,0,0]
+                        else:
+                            if flag == 1:
+                                color = imgs[i][temp_x][temp_y]
+                            else:
+                                color = imgs[j][temp_x][temp_y]
+
+                        output_image[x-new_image_width_low][y-new_image_height_low] = color
+
+                # if flag == 1:
+                #     imgReg = custom_warpPerspective(imgs[i], homography_matrix, width2, height2)
+                # else:
+                #     imgReg = custom_warpPerspective(imgs[j], homography_matrix, width2, height2)
+
+                result = cv2.warpPerspective(imgs[i], M, (new_image_width_high - new_image_width_low, new_image_height_high - new_image_height_low))
+                cv2.imwrite('validateq3.jpg',result)
+                cv2.imwrite('testq3.jpg', output_image)
 
                 # indY, indX = np.indices((width1,height1))  # similar to meshgrid/mgrid
                 # lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
