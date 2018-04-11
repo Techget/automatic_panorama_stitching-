@@ -292,31 +292,41 @@ def up_to_step_4(imgs):
         if len(good) < GOOD_MATCH_POINTS_AMOUNT:
             continue
 
+        correspondence_list = []
         for match in good:
             (x1, y1) = kp1[match.queryIdx].pt
             (x2, y2) = kp2[match.trainIdx].pt
             correspondence_list.append([x1, y1, x2, y2])
         homography_matrix = ransac_homography_matrix(np.matrix(correspondence_list))
+        print(homography_matrix)
 
-        width1, height1 = gray1.shape
-        width2, height2 = gray2.shape
+        result = cv2.warpPerspective(imgs[ind], homography_matrix,\
+            (imgs[ind].shape[1] + img_a.shape[1], imgs[ind].shape[0]))
+        result[0:img_a.shape[0], 0:img_a.shape[1]] = img_a
 
-        xh = np.linalg.inv(homography_matrix)
-        homography_matrix = (1/xh.item(8)) * xh
-        new_image_width = width1 + width2
-        new_image_height = height1 if height1 > height2 else height2
-        indY, indX = np.indices((new_image_width, new_image_height))
-        lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
-        trans_lin_homg_pts = homography_matrix.dot(lin_homg_pts)
-        trans_lin_homg_pts /= trans_lin_homg_pts[2,:]
-        map_ind = homography_matrix.dot(lin_homg_pts)
-        map_x, map_y = map_ind[:-1]/map_ind[-1]  # ensure homogeneity
-        map_x = map_x.reshape(width1, height1).astype(np.float32)
-        map_y = map_y.reshape(width1, height1).astype(np.float32)
 
-        if flag == 1:
-            dst = cv2.remap(imgs[i], map_x, map_y, cv2.INTER_LINEAR)
+        # width1, height1 = gray1.shape
+        # width2, height2 = gray2.shape
+        # print(width1, width2, height1, height2)
+        # xh = np.linalg.inv(homography_matrix)
+        # homography_matrix = (1/xh.item(8)) * xh
+        # new_image_width = width2
+        # new_image_height = height1 + height2
+        # indY, indX = np.indices((new_image_width, new_image_height))
+        # lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
+        # trans_lin_homg_pts = homography_matrix.dot(lin_homg_pts)
+        # trans_lin_homg_pts /= trans_lin_homg_pts[2,:]
+        # map_ind = homography_matrix.dot(lin_homg_pts)
+        # map_x, map_y = map_ind[:-1]/map_ind[-1]  # ensure homogeneity
+        # map_x = map_x.reshape(new_image_width, new_image_height).astype(np.float32)
+        # map_y = map_y.reshape(new_image_width, new_image_height).astype(np.float32)
 
+        # dst = cv2.remap(img_a, map_x, map_y, cv2.INTER_LINEAR)
+        # # print(dst.shape)
+        # # x = dst[0:width2, height1:height2]
+        # # print(x.shape)
+        # dst[0:width2, height1:height1+height2] = imgs[ind]
+        cv2.imwrite('testq4.jpg', result)
 
 
 
