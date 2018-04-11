@@ -261,12 +261,16 @@ def up_to_step_4(imgs):
     GOOD_MATCH_POINTS_AMOUNT = 20
     center_image_index = len(imgs)//2
 
-    # left stitch
-    img_a = imgs[0]
-    for ind in range(1, center_image_index+1):
+    # right stich
+    index_i = len(imgs)-2
+    right_image = np.array([])
+    while(index_i >= center_image_index):
+        img_a = imgs[index_i]
+        if right_image.size == 0:
+            right_image = imgs[-1]
         gray1= cv2.cvtColor(img_a,cv2.COLOR_BGR2GRAY)
         kp1, des1 = detector.detectAndCompute(gray1,None)
-        gray2= cv2.cvtColor(imgs[ind],cv2.COLOR_BGR2GRAY)
+        gray2= cv2.cvtColor(right_image,cv2.COLOR_BGR2GRAY)
         kp2, des2 = detector.detectAndCompute(gray2,None)
         distances = np.sqrt(((des1[:, :, None] - des2[:, :, None].T) ** 2).sum(1))
 
@@ -290,7 +294,7 @@ def up_to_step_4(imgs):
 
         # filter good match pics
         if len(good) < GOOD_MATCH_POINTS_AMOUNT:
-            continue
+            index_i = -1
 
         correspondence_list = []
         for match in good:
@@ -300,38 +304,37 @@ def up_to_step_4(imgs):
         homography_matrix = ransac_homography_matrix(np.matrix(correspondence_list))
         print(homography_matrix)
 
-        result = cv2.warpPerspective(imgs[ind], homography_matrix,\
-            (imgs[ind].shape[1] + img_a.shape[1], imgs[ind].shape[0]))
-        result[0:img_a.shape[0], 0:img_a.shape[1]] = img_a
+        width1, height1 = gray1.shape
+        width2, height2 = gray2.shape
+        new_image_width = width1 + width2
+        new_image_height = height1 + height2
+        indY, indX = np.indices((new_image_width, new_image_height))
+        lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
+        trans_lin_homg_pts = homography_matrix.dot(lin_homg_pts)
+        trans_lin_homg_pts /= trans_lin_homg_pts[2,:]
+        map_ind = homography_matrix.dot(lin_homg_pts)
+        map_x, map_y = map_ind[:-1]/map_ind[-1]  # ensure homogeneity
+        map_x = map_x.reshape(new_image_width, new_image_height).astype(np.float32)
+        map_y = map_y.reshape(new_image_width, new_image_height).astype(np.float32)
 
+        dst = cv2.remap(right_image, map_x, map_y, cv2.INTER_LINEAR)
+        dst[0:width1, 0:height1] = img_a
+        right_image = dst
+        gray = cv2.cvtColor(right_image,cv2.COLOR_BGR2GRAY)
+        _,thresh = cv2.threshold(gray,1,255,cv2.THRESH_BINARY)
+        contours = cv2.findContours(thresh,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+        cnt = contours[0]
+        x,y,w,h = cv2.boundingRect(cnt)
+        right_image = right_image[y:y+h,x:x+w]
+        index_i -= 1
 
-        # width1, height1 = gray1.shape
-        # width2, height2 = gray2.shape
-        # print(width1, width2, height1, height2)
-        # xh = np.linalg.inv(homography_matrix)
-        # homography_matrix = (1/xh.item(8)) * xh
-        # new_image_width = width2
-        # new_image_height = height1 + height2
-        # indY, indX = np.indices((new_image_width, new_image_height))
-        # lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
-        # trans_lin_homg_pts = homography_matrix.dot(lin_homg_pts)
-        # trans_lin_homg_pts /= trans_lin_homg_pts[2,:]
-        # map_ind = homography_matrix.dot(lin_homg_pts)
-        # map_x, map_y = map_ind[:-1]/map_ind[-1]  # ensure homogeneity
-        # map_x = map_x.reshape(new_image_width, new_image_height).astype(np.float32)
-        # map_y = map_y.reshape(new_image_width, new_image_height).astype(np.float32)
-
-        # dst = cv2.remap(img_a, map_x, map_y, cv2.INTER_LINEAR)
-        # # print(dst.shape)
-        # # x = dst[0:width2, height1:height2]
-        # # print(x.shape)
-        # dst[0:width2, height1:height1+height2] = imgs[ind]
-        cv2.imwrite('testq4.jpg', result)
-
+    cv2.imwrite('testq4.jpg', right_image)
 
 
 
-def save_step_4(imgs, output_path="./output/step4"):
+
+
+def save_step_4(img_pano, output_path="./output/step4"):
     """Save the intermediate result from Step 4"""
     # ... your code here ...
     pass
