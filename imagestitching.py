@@ -132,26 +132,11 @@ def calculate_homography(correspondences):
     h = (1/h.item(8)) * h
     return h
 
-def calculate_homography2(correspondences):
-    A = []
-    for corr in correspondences:
-        p1 = np.matrix([corr.item(0), corr.item(1), 1])
-        p2 = np.matrix([corr.item(2), corr.item(3), 1])
-        x, y = p1.item(0), p1.item(1)
-        u, v = p2.item(0), p2.item(1)
-        A.append([x, y, 1, 0, 0, 0, -u*x, -u*y, -u])
-        A.append([0, 0, 0, x, y, 1, -v*x, -v*y, -v])
-    A = np.asarray(A)
-    U, S, Vh = np.linalg.svd(A)
-    L = Vh[-1,:] / Vh[-1,-1]
-    H = L.reshape(3, 3)
-    return H
-
 def ransac_homography_matrix(corrs):
     h_matrix = None
     max_inliners_amount = -1
     INLIER_THRESHOLD = 7
-    MAX_LOOPS_TO_RUN = 4000
+    MAX_LOOPS_TO_RUN = 5000
     count = 0
     while(max_inliners_amount < len(corrs)*0.9 and count <= MAX_LOOPS_TO_RUN):
         count += 1
@@ -173,32 +158,6 @@ def ransac_homography_matrix(corrs):
             h_matrix = h  
 
     return h_matrix
-
-def custom_warpPerspective(img, H, width, height):
-    # inverse H
-    H = np.linalg.inv(H)
-    H = (1/H.item(8)) * H
-    # find corresponding points in original img
-    original_width, original_height = img.shape[:2]
-    indY, indX = np.indices((width,height))  # similar to meshgrid/mgrid
-    lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
-    trans_lin_homg_pts = H.dot(lin_homg_pts)
-    trans_lin_homg_pts /= trans_lin_homg_pts[2,:]
-    trans_lin_homg_pts = np.array(trans_lin_homg_pts)
-
-    output_img = np.zeros((width, height, 3))
-    for i in range(0, width):
-        for j in range(0, height):
-            temp_x = int(trans_lin_homg_pts[0].item(i))
-            temp_y = int(trans_lin_homg_pts[1].item(j))
-
-            if temp_x >=0 and temp_x<original_width and temp_y>=0 and temp_y <original_height:
-                output_img[i][j] = img[i][j]
-            else:
-                output_img[i][j] = [0,0,0]
-
-    return output_img
-
 
 def up_to_step_3(imgs):
     """Complete pipeline up to step 3: estimating homographies and warpings"""
@@ -295,65 +254,71 @@ def save_step_3(img_pairs, output_path="./output/step3"):
 
 
 def up_to_step_4(imgs):
-
     detector = cv2.xfeatures2d.SIFT_create(nfeatures=0,nOctaveLayers=3,\
         contrastThreshold=0.04,edgeThreshold=10, sigma=1.6)
 
     GOOD_MATCH_DISTANCE = 100
     GOOD_MATCH_POINTS_AMOUNT = 20
-    output_imgs = {}
+    center_image_index = len(imgs)//2
 
-    for i in range(0,len(imgs)-1):
-        for j in range(i+1,len(imgs)):
-            gray1= cv2.cvtColor(imgs[i],cv2.COLOR_BGR2GRAY)
-            kp1, des1 = detector.detectAndCompute(gray1,None)
-            gray2= cv2.cvtColor(imgs[j],cv2.COLOR_BGR2GRAY)
-            kp2, des2 = detector.detectAndCompute(gray2,None)
-            distances = np.sqrt(((des1[:, :, None] - des2[:, :, None].T) ** 2).sum(1))
+    # left stitch
+    img_a = imgs[0]
+    for ind in range(1, center_image_index+1):
+        gray1= cv2.cvtColor(img_a,cv2.COLOR_BGR2GRAY)
+        kp1, des1 = detector.detectAndCompute(gray1,None)
+        gray2= cv2.cvtColor(imgs[ind],cv2.COLOR_BGR2GRAY)
+        kp2, des2 = detector.detectAndCompute(gray2,None)
+        distances = np.sqrt(((des1[:, :, None] - des2[:, :, None].T) ** 2).sum(1))
 
-            nearest_matches = []
-            for x in range(0, len(distances)):
-                indexes = distances[x].argsort(kind='mergesort')[:2]
-                nearest_matches.append((cv2.DMatch(x, indexes[0], distances[x][indexes[0]]), \
-                    cv2.DMatch(x, indexes[1], distances[x][indexes[1]])))
-
-            good = []
-            y_taken = dict()
-            for m,n in nearest_matches:
-                if m.distance < 0.7*n.distance and m.distance<GOOD_MATCH_DISTANCE:
-                    if (kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1]) in y_taken:
-                        if y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])].distance > m.distance:
-                            good.remove(y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])])
-                            good.append(m)
-                            y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])] = m
-                    else:
+        nearest_matches = []
+        for x in range(0, len(distances)):
+            indexes = distances[x].argsort(kind='mergesort')[:2]
+            nearest_matches.append((cv2.DMatch(x, indexes[0], distances[x][indexes[0]]), \
+                cv2.DMatch(x, indexes[1], distances[x][indexes[1]])))
+        good = []
+        y_taken = dict()
+        for m,n in nearest_matches:
+            if m.distance < 0.7*n.distance and m.distance<GOOD_MATCH_DISTANCE:
+                if (kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1]) in y_taken:
+                    if y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])].distance > m.distance:
+                        good.remove(y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])])
                         good.append(m)
                         y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])] = m
+                else:
+                    good.append(m)
+                    y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])] = m
 
-            # filter good match pics
-            if len(good) < GOOD_MATCH_POINTS_AMOUNT:
-                continue
-    
-            correspondence_list = []
-            for match in good:
-                (x1, y1) = kp1[match.queryIdx].pt
-                (x2, y2) = kp2[match.trainIdx].pt
-                correspondence_list.append([x1, y1, x2, y2])
+        # filter good match pics
+        if len(good) < GOOD_MATCH_POINTS_AMOUNT:
+            continue
 
-            # calcuate h_matrix
-            # homography_matrix = ransac_homography_matrix(np.matrix(correspondence_list)) 
-            src_pts = np.float32([ kp1[m.queryIdx].pt for m in good ]).reshape(-1,1,2)
-            dst_pts = np.float32([ kp2[m.trainIdx].pt for m in good ]).reshape(-1,1,2)
-            M, mask = cv2.findHomography(dst_pts, src_pts,  cv2.RANSAC,5.0)
+        for match in good:
+            (x1, y1) = kp1[match.queryIdx].pt
+            (x2, y2) = kp2[match.trainIdx].pt
+            correspondence_list.append([x1, y1, x2, y2])
+        homography_matrix = ransac_homography_matrix(np.matrix(correspondence_list))
 
-            result = cv2.warpPerspective(imgs[j], M, (imgs[i].shape[1] + imgs[j].shape[1], imgs[j].shape[0]))
-            result[0:imgs[i].shape[0], 0:imgs[i].shape[1]] = imgs[i]
+        width1, height1 = gray1.shape
+        width2, height2 = gray2.shape
 
-            # cv2.imshow('123.jpg', result)
-            cv2.imwrite('123.jpg', result)
-            # cv2.waitKey()
+        xh = np.linalg.inv(homography_matrix)
+        homography_matrix = (1/xh.item(8)) * xh
+        new_image_width = width1 + width2
+        new_image_height = height1 if height1 > height2 else height2
+        indY, indX = np.indices((new_image_width, new_image_height))
+        lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
+        trans_lin_homg_pts = homography_matrix.dot(lin_homg_pts)
+        trans_lin_homg_pts /= trans_lin_homg_pts[2,:]
+        map_ind = homography_matrix.dot(lin_homg_pts)
+        map_x, map_y = map_ind[:-1]/map_ind[-1]  # ensure homogeneity
+        map_x = map_x.reshape(width1, height1).astype(np.float32)
+        map_y = map_y.reshape(width1, height1).astype(np.float32)
 
-    return output_imgs
+        if flag == 1:
+            dst = cv2.remap(imgs[i], map_x, map_y, cv2.INTER_LINEAR)
+
+
+
 
 
 def save_step_4(imgs, output_path="./output/step4"):
