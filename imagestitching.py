@@ -4,7 +4,7 @@ import argparse
 import os
 import numpy as np
 import random
-# from sets import Set
+import math
 
 def up_to_step_1(imgs):
     """Complete pipeline up to step 3: Detecting features and descriptors"""
@@ -253,9 +253,43 @@ def save_step_3(img_pairs, output_path="./output/step3"):
         cv2.imwrite("%s%s"%(output_path,key), value)
 
 
+def panelToClinderWrapping(imgs):
+    output = []
+    for img in imgs:
+        height, width, depth = img.shape
+
+        dst = np.zeros(list(img.shape), dtype=np.uint8)
+        centerX = int(width / 2)
+        centerY = int(height / 2)
+
+        f = width / (2 * math.tan(math.pi / 4 / 2))
+
+        for i in range(width):
+            for j in range(height):
+                theta = math.asin((i - centerX) / f)
+                pointX = int(f * math.tan((i - centerX) / f) + centerX)
+                pointY = int((j - centerY) / math.cos(theta) + centerY)
+
+                if pointX >= 0 and pointX < width and pointY >= 0 and pointY < height:
+                    dst[j][i] = img[pointY][pointX]
+
+        # remove black contour
+        gray = cv2.cvtColor(dst,cv2.COLOR_BGR2GRAY)
+        _,thresh = cv2.threshold(gray,1,255,cv2.THRESH_BINARY)
+        contours = cv2.findContours(thresh,cv2.RETR_EXTERNAL,cv2.CHAIN_APPROX_SIMPLE)
+        cnt = contours[0]
+        x,y,w,h = cv2.boundingRect(cnt)
+        dst = dst[y:y+h,x:x+w]
+
+        output.append(dst)
+
+    return output
+
 def up_to_step_4(imgs):
     detector = cv2.xfeatures2d.SIFT_create(nfeatures=0,nOctaveLayers=3,\
         contrastThreshold=0.04,edgeThreshold=10, sigma=1.6)
+
+    imgs = panelToClinderWrapping(imgs)
 
     GOOD_MATCH_DISTANCE = 100
     GOOD_MATCH_POINTS_AMOUNT = 20
@@ -298,6 +332,7 @@ def up_to_step_4(imgs):
             index_i -= 1
             continue
 
+        # print('here')
         correspondence_list = []
         for match in good:
             (x1, y1) = kp1[match.queryIdx].pt
@@ -308,12 +343,12 @@ def up_to_step_4(imgs):
 
         width1, height1 = gray1.shape
         width2, height2 = gray2.shape
-        new_image_width = width1 + width2//5
+        new_image_width = width1 + width2//3
         new_image_height = height1 + height2
         indY, indX = np.indices((new_image_width, new_image_height))
         lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
-        trans_lin_homg_pts = homography_matrix.dot(lin_homg_pts)
-        trans_lin_homg_pts /= trans_lin_homg_pts[2,:]
+        # trans_lin_homg_pts = homography_matrix.dot(lin_homg_pts)
+        # trans_lin_homg_pts /= trans_lin_homg_pts[2,:]
         map_ind = homography_matrix.dot(lin_homg_pts)
         map_x, map_y = map_ind[:-1]/map_ind[-1]  # ensure homogeneity
         map_x = map_x.reshape(new_image_width, new_image_height).astype(np.float32)
