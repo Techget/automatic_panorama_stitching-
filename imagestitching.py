@@ -135,7 +135,7 @@ def calculate_homography(correspondences):
 def ransac_homography_matrix(corrs):
     h_matrix = None
     max_inliners_amount = -1
-    INLIER_THRESHOLD = 7
+    INLIER_THRESHOLD = 5
     MAX_LOOPS_TO_RUN = 5000
     count = 0
     while(max_inliners_amount < len(corrs)*0.9 and count <= MAX_LOOPS_TO_RUN):
@@ -377,16 +377,23 @@ def up_to_step_4(imgs):
     indY, indX = np.indices((new_image_width, new_image_height))
     lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
 
-    trans_lin_homg_pts = homography_matrix.dot(lin_homg_pts)
-    trans_lin_homg_pts /= trans_lin_homg_pts[2,:]
-    
+    # trans_lin_homg_pts = homography_matrix.dot(lin_homg_pts)
+    # trans_lin_homg_pts /= trans_lin_homg_pts[2,:]
+    new_image_width_low = int(np.min(trans_lin_homg_pts[0,:]))
+    new_image_height_low = int(np.min(trans_lin_homg_pts[1,:]))
+    new_image_width_high = int(np.max(trans_lin_homg_pts[0,:]))
+    new_image_height_high = int(np.max(trans_lin_homg_pts[1,:]))
+    print(new_image_height_low, new_image_height_high)
+
     map_ind = homography_matrix.dot(lin_homg_pts)
     map_x, map_y = map_ind[:-1]/map_ind[-1]  # ensure homogeneity
     map_x = map_x.reshape(new_image_width, new_image_height).astype(np.float32)
     map_y = map_y.reshape(new_image_width, new_image_height).astype(np.float32)
 
     dst = cv2.remap(img_a, map_x, map_y, cv2.INTER_LINEAR)
+    dst[0:width1, new_image_height_high:new_image_height_high+height2] = img_b
     cv2.imwrite('dst.jpg',dst)
+
     # cv2.imshow("warped", tmp)
     # cv2.waitKey()
     
