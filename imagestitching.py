@@ -370,21 +370,23 @@ def up_to_step_4(imgs):
         (x2, y2) = kp2[match.trainIdx].pt
         correspondence_list.append([x1, y1, x2, y2])
     homography_matrix = ransac_homography_matrix(np.matrix(correspondence_list))
-    width1, height1 = gray1.shape
-    width2, height2 = gray2.shape
-    new_image_width = width1 + width2//2
-    new_image_height = height1 + height2
-    indY, indX = np.indices((new_image_width, new_image_height))
-    lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
 
-    # trans_lin_homg_pts = homography_matrix.dot(lin_homg_pts)
-    # trans_lin_homg_pts /= trans_lin_homg_pts[2,:]
+    indY, indX = np.indices((img_a.shape[0],img_a.shape[1]))  # similar to meshgrid/mgrid
+    lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
+    trans_lin_homg_pts = homography_matrix.dot(lin_homg_pts)
+    trans_lin_homg_pts /= trans_lin_homg_pts[2,:]
     new_image_width_low = int(np.min(trans_lin_homg_pts[0,:]))
     new_image_height_low = int(np.min(trans_lin_homg_pts[1,:]))
     new_image_width_high = int(np.max(trans_lin_homg_pts[0,:]))
     new_image_height_high = int(np.max(trans_lin_homg_pts[1,:]))
     print(new_image_height_low, new_image_height_high)
 
+    width1, height1 = gray1.shape
+    width2, height2 = gray2.shape
+    new_image_width = width1 + width2//2
+    new_image_height = new_image_height_high + height2
+    indY, indX = np.indices((new_image_width, new_image_height))
+    lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
     map_ind = homography_matrix.dot(lin_homg_pts)
     map_x, map_y = map_ind[:-1]/map_ind[-1]  # ensure homogeneity
     map_x = map_x.reshape(new_image_width, new_image_height).astype(np.float32)
