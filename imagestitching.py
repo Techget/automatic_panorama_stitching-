@@ -262,7 +262,7 @@ def up_to_step_4(imgs):
     center_image_index = len(imgs)//2
 
     # right stich
-    index_i = -1 #len(imgs)-2
+    index_i = len(imgs)-2
     right_image = np.array([])
     while(index_i >= 0):
         img_a = imgs[index_i]
@@ -329,103 +329,7 @@ def up_to_step_4(imgs):
         right_image = right_image[y:y+h,x:x+w]
         index_i -= 1
 
-
-
-
-    # left stich
-    img_a = imgs[0]
-    img_b = imgs[1]
-    gray1= cv2.cvtColor(img_b,cv2.COLOR_BGR2GRAY)
-    kp1, des1 = detector.detectAndCompute(gray1,None)
-    gray2= cv2.cvtColor(img_a,cv2.COLOR_BGR2GRAY)
-    kp2, des2 = detector.detectAndCompute(gray2,None)
-    distances = np.sqrt(((des1[:, :, None] - des2[:, :, None].T) ** 2).sum(1))
-
-    nearest_matches = []
-    for x in range(0, len(distances)):
-        indexes = distances[x].argsort(kind='mergesort')[:2]
-        nearest_matches.append((cv2.DMatch(x, indexes[0], distances[x][indexes[0]]), \
-            cv2.DMatch(x, indexes[1], distances[x][indexes[1]])))
-    good = []
-    y_taken = dict()
-    for m,n in nearest_matches:
-        if m.distance < 0.7*n.distance and m.distance<GOOD_MATCH_DISTANCE:
-            if (kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1]) in y_taken:
-                if y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])].distance > m.distance:
-                    good.remove(y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])])
-                    good.append(m)
-                    y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])] = m
-            else:
-                good.append(m)
-                y_taken[(kp2[m.trainIdx].pt[0],kp2[m.trainIdx].pt[1])] = m
-
-    # filter good match pics
-    if len(good) < GOOD_MATCH_POINTS_AMOUNT:
-        print('fuck')
-        index_i = -1
-
-    correspondence_list = []
-    for match in good:
-        (x1, y1) = kp1[match.queryIdx].pt
-        (x2, y2) = kp2[match.trainIdx].pt
-        correspondence_list.append([x1, y1, x2, y2])
-    homography_matrix = ransac_homography_matrix(np.matrix(correspondence_list))
-
-    indY, indX = np.indices((img_a.shape[0],img_a.shape[1]))  # similar to meshgrid/mgrid
-    lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
-    trans_lin_homg_pts = homography_matrix.dot(lin_homg_pts)
-    trans_lin_homg_pts /= trans_lin_homg_pts[2,:]
-    new_image_width_low = int(np.min(trans_lin_homg_pts[0,:]))
-    new_image_height_low = int(np.min(trans_lin_homg_pts[1,:]))
-    new_image_width_high = int(np.max(trans_lin_homg_pts[0,:]))
-    new_image_height_high = int(np.max(trans_lin_homg_pts[1,:]))
-    print(new_image_height_low, new_image_height_high)
-
-    width1, height1 = gray1.shape
-    width2, height2 = gray2.shape
-    new_image_width = width1 + width2//2
-    new_image_height = new_image_height_high + height2
-    indY, indX = np.indices((new_image_width, new_image_height))
-    lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
-    map_ind = homography_matrix.dot(lin_homg_pts)
-    map_x, map_y = map_ind[:-1]/map_ind[-1]  # ensure homogeneity
-    map_x = map_x.reshape(new_image_width, new_image_height).astype(np.float32)
-    map_y = map_y.reshape(new_image_width, new_image_height).astype(np.float32)
-
-    dst = cv2.remap(img_a, map_x, map_y, cv2.INTER_LINEAR)
-    dst[0:width1, new_image_height_high:new_image_height_high+height2] = img_b
-    cv2.imwrite('dst.jpg',dst)
-
-    # cv2.imshow("warped", tmp)
-    # cv2.waitKey()
-    
-    # tmp[int(ds[1]) +offsety:int(ds[1]) +img_b.shape[1]+offsety, int(ds[0])+offsetx:int(ds[0])+img_b.shape[0]+offsetx] = img_b
-    # img_a = tmp
-    # cv2.imwrite("img_a.jpg", img_a)
-    # cv2.waitKey()
-
-    # new_image_width = dsize[0] 
-    # new_image_height = dsize[1]
-    # print(new_image_width, new_image_height)
-    # indY, indX = np.indices((new_image_width, new_image_height))
-    # lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
-    # map_ind = xh.dot(lin_homg_pts)
-    # map_x, map_y = map_ind[:-1]/map_ind[-1]  # ensure homogeneity
-    # map_x = map_x.reshape(new_image_width, new_image_height).astype(np.float32)
-    # map_y = map_y.reshape(new_image_width, new_image_height).astype(np.float32)
-    # dst = cv2.remap(img_a, map_x, map_y, cv2.INTER_LINEAR)
-    # cv2.imwrite('testq4x.jpg', dst)
-    # # dst = cv2.warpPerspective(img_a, homography_matrix, dsize)
-    # # cv2.imwrite('warped.jpg', dst)
-
-    # dst[offsetx:img_b.shape[0]+offsetx, offsety:img_b.shape[1]+offsety] = img_b
-    # # dst[int(ds[1])+offsety:img_b.shape[0]+offsety+int(ds[1]), int(ds[0])+offsetx:img_b.shape[1]+offsetx+int(ds[0])] = img_b
-    # # dst[offsetx:img_b.shape[0],offsety:img_b.shape[1]] = img_b
-    # cv2.imwrite('testq4.jpg', dst)
-
-    # # combine left-right
-
-    # return right_image
+    return right_image
 
 
 
