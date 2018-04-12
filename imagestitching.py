@@ -295,7 +295,8 @@ def up_to_step_4(imgs):
         # filter good match pics
         if len(good) < GOOD_MATCH_POINTS_AMOUNT:
             # print('fuck')
-            index_i = -1
+            index_i -= 1
+            continue
 
         correspondence_list = []
         for match in good:
@@ -303,11 +304,11 @@ def up_to_step_4(imgs):
             (x2, y2) = kp2[match.trainIdx].pt
             correspondence_list.append([x1, y1, x2, y2])
         homography_matrix = ransac_homography_matrix(np.matrix(correspondence_list))
-        print(homography_matrix)
+        # print(homography_matrix)
 
         width1, height1 = gray1.shape
         width2, height2 = gray2.shape
-        new_image_width = width1 + width2//2
+        new_image_width = width1 + width2//5
         new_image_height = height1 + height2
         indY, indX = np.indices((new_image_width, new_image_height))
         lin_homg_pts = np.stack((indX.ravel(), indY.ravel(), np.ones(indY.size)))
@@ -327,6 +328,8 @@ def up_to_step_4(imgs):
         cnt = contours[0]
         x,y,w,h = cv2.boundingRect(cnt)
         right_image = right_image[y:y+h,x:x+w]
+
+        # right_image = cv2.resize(right_image, (right_image.shape[0],right_image.shape[1]), interpolation=cv2.INTER_LINEAR)
         index_i -= 1
 
     return right_image
